@@ -5,8 +5,6 @@ import {
   TextInputStyle,
   ActionRowBuilder,
   ThreadAutoArchiveDuration,
-  ButtonBuilder,
-  ButtonStyle,
 } from 'discord.js';
 
 export default {
@@ -14,6 +12,7 @@ export default {
   async execute(interaction) {
     const client = interaction.client;
 
+    // スラッシュコマンド処理
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
@@ -32,6 +31,7 @@ export default {
       return;
     }
 
+    // ボタン押下時
     if (interaction.isButton()) {
       if (interaction.customId === 'expense_apply_button') {
         if (interaction.replied || interaction.deferred) return;
@@ -76,13 +76,14 @@ export default {
       return;
     }
 
+    // モーダル送信時
     if (interaction.isModalSubmit()) {
       if (interaction.customId === 'expense_apply_modal') {
         if (interaction.replied || interaction.deferred) return;
 
         const expenseItem = interaction.fields.getTextInputValue('expenseItem');
         const amount = interaction.fields.getTextInputValue('amount');
-        const remarks = interaction.fields.getTextInputValue('remarks') || '-';
+        const remarks = interaction.fields.getTextInputValue('remarks');
 
         const channel = interaction.channel;
         if (!channel) {
@@ -94,7 +95,7 @@ export default {
         }
 
         const now = new Date();
-        const yearMonth = now.toISOString().slice(0, 7);
+        const yearMonth = now.toISOString().slice(0, 7); // YYYY-MM
         const threadName = `経費申請-${yearMonth}`;
 
         let thread;
@@ -118,45 +119,22 @@ export default {
         }
 
         try {
-          const fetchedMessages = await channel.messages.fetch({ limit: 50 });
-          for (const msg of fetchedMessages.values()) {
-            if (
-              msg.author.id === interaction.client.user.id &&
-              msg.content.includes('経費申請をする場合は以下のボタンを押してください。')
-            ) {
-              try {
-                await msg.delete();
-              } catch (e) {
-                console.error('既存案内メッセージ削除失敗:', e);
-              }
-            }
-          }
-
+          // スレッドに申請メッセージを投稿
           const sentMessage = await thread.send(
-            `**経費申請**\n- 名前: <@${interaction.user.id}>\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${remarks}`
+            `**経費申請**\n- 名前: <@${interaction.user.id}>\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${remarks || 'なし'}`
           );
 
-          const formattedDate = now.toLocaleString('ja-JP', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit',
-            hour12: false,
-          });
+          // 日時やユーザー表示用文字列を作成
+          const nowStr = new Date();
+          const date = nowStr.toLocaleDateString('ja-JP').replaceAll('/', '/');
+          const time = nowStr.toLocaleTimeString('ja-JP', { hour12: false });
+          const userMention = `<@${interaction.user.id}>`;
+          const userName = interaction.user.username;
 
-          const logMessage = `${formattedDate}　${interaction.user.tag} (<@${interaction.user.id}>)　[メッセージを見る](${sentMessage.url})`;
-          await channel.send(logMessage);
-
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('expense_apply_button')
-              .setLabel('経費申請する')
-              .setStyle(ButtonStyle.Primary)
+          // テキストチャンネルにログメッセージを送信
+          await channel.send(
+            `経費申請しました。　${date} ${time}　${userName} (${userMention})　${sentMessage.url}`
           );
-          await channel.send({
-            content: '経費申請をする場合は以下のボタンを押してください。',
-            components: [row],
-          });
-
-          // ※申請者への非公開返信を削除しました。
 
         } catch (e) {
           console.error(`[${interaction.user.tag}] スレッド送信失敗:`, e);
@@ -168,4 +146,3 @@ export default {
     }
   },
 };
-
