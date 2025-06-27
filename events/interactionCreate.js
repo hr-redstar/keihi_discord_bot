@@ -5,6 +5,8 @@ import {
   TextInputStyle,
   ActionRowBuilder,
   ThreadAutoArchiveDuration,
+  ButtonBuilder,
+  ButtonStyle,
 } from 'discord.js';
 
 export default {
@@ -12,10 +14,11 @@ export default {
   async execute(interaction) {
     const client = interaction.client;
 
-    // スラッシュコマンド
+    // スラッシュコマンド処理
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
+
       try {
         await command.execute(interaction);
       } catch (error) {
@@ -30,12 +33,16 @@ export default {
       return;
     }
 
-    // ボタン
+    // ボタン押下時
     if (interaction.isButton()) {
       if (interaction.customId === 'expense_apply_button') {
+        if (interaction.replied || interaction.deferred) return;
+
         const modal = new ModalBuilder()
           .setCustomId('expense_apply_modal')
           .setTitle('経費申請フォーム');
+
+        // 名前はモーダルに表示しない（非表示）
 
         const expenseItemInput = new TextInputBuilder()
           .setCustomId('expenseItem')
@@ -49,98 +56,134 @@ export default {
           .setStyle(TextInputStyle.Short)
           .setRequired(true);
 
-        const remarksInput = new TextInputBuilder()
-          .setCustomId('remarks')
-          .setLabel('備考 (任意)')
+        const notesInput = new TextInputBuilder()
+          .setCustomId('notes')
+          .setLabel('備考（任意）')
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(false);
 
         modal.addComponents(
           new ActionRowBuilder().addComponents(expenseItemInput),
           new ActionRowBuilder().addComponents(amountInput),
-          new ActionRowBuilder().addComponents(remarksInput)
+          new ActionRowBuilder().addComponents(notesInput)
         );
 
         try {
           await interaction.showModal(modal);
         } catch (error) {
-          console.error('モーダル表示エラー:', error);
+          console.error(`モーダル表示エラー [${interaction.user.tag}]:`, error);
           if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-              content: 'モーダルの表示に失敗しました。',
-              flags: 64,
-            });
+            await interaction.reply({ content: 'モーダルの表示に失敗しました。', flags: 64 });
           }
         }
       }
       return;
     }
 
-    // モーダル送信
+    // モーダル送信時
     if (interaction.isModalSubmit()) {
       if (interaction.customId === 'expense_apply_modal') {
+        if (interaction.replied || interaction.deferred) return;
+
         const expenseItem = interaction.fields.getTextInputValue('expenseItem');
         const amount = interaction.fields.getTextInputValue('amount');
-        const remarks = interaction.fields.getTextInputValue('remarks');
+        const notes = interaction.fields.getTextInputValue('notes') || '（備考なし）';
 
         const channel = interaction.channel;
         if (!channel) {
           await interaction.reply({
-            content: 'このモーダルはテキストチャンネル内で使ってください。',
+            content: 'この操作はテキストチャンネルでのみ可能です。',
             flags: 64,
           });
           return;
         }
 
+        // 日付フォーマット（日本時間）
         const now = new Date();
         const yearMonth = now.toISOString().slice(0, 7);
-        const threadName = `経費申請-${yearMonth}`;
+        const formattedDate = now.toLocaleString('ja-JP', {
+          timeZone: 'Asia/Tokyo',
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }).replace(/\//g, '-');
 
+        const threadName = `経費申請-${yearMonth}`;
         let thread;
+
         try {
           const threads = await channel.threads.fetch();
           thread = threads.threads.find(t => t.name === threadName);
+
           if (!thread) {
             thread = await channel.threads.create({
               name: threadName,
               autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
-              reason: '経費申請スレッド自動作成',
+              reason: `経費申請スレッド作成 by ${interaction.user.tag}`,
             });
           }
         } catch (e) {
-          console.error('スレッド作成失敗:', e);
-          await interaction.reply({
-            content: 'スレッド作成に失敗しました。',
-            flags: 64,
-          });
+          console.error(`[${interaction.user.tag}] スレッド取得・作成エラー:`, e);
+          await interaction.reply({ content: 'スレッドの取得または作成に失敗しました。', flags: 64 });
           return;
         }
 
-        let sentMessage;
         try {
-          sentMessage = await thread.send(
-            `**経費申請**\n- 名前: <@${interaction.user.id}>\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${remarks || 'なし'}`
+          const threadMessage = await thread.send(
+            `**経費申請**\n- 名前: <@${interaction.user.id}>\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${notes}`
           );
+
+          // テキストチャンネルにログ送信（年月日時刻、名前＋メンション、スレッドメッセージリンク）
+          await channel.send(
+            `経費申請しました。　${formattedDate}　${interaction.member?.displayName || interaction.user.username} (<@${interaction.user.id}>)　${threadMessage.url}`
+          );
+
+          // 既存案内メッセージ削除（過去50件から検索）
+          try {
+            const fetchedMessages = await channel.messages.fetch({ limit: 50 });
+            for (const msg of fetchedMessages.values()) {
+              if (
+                msg.author.id === interaction.client.user.id &&
+                msg.content.includes('経費申請をする場合は以下のボタンを押してください。')
+              ) {
+                try {
+                  await msg.delete();
+                } catch (e) {
+                  console.error('既存案内メッセージ削除失敗:', e);
+                }
+              }
+            }
+          } catch (err) {
+            console.error('案内メッセージ取得失敗:', err);
+          }
+
+          // 新規案内メッセージ＋ボタン送信
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('expense_apply_button')
+              .setLabel('経費申請をする場合は以下のボタンを押してください。')
+              .setStyle(ButtonStyle.Primary)
+          );
+
+          await channel.send({
+            content: '経費申請をする場合は以下のボタンを押してください。',
+            components: [row],
+          });
+
+          // モーダルは自動で閉じるのでここで返信は不要
+
         } catch (e) {
-          console.error('スレッド送信失敗:', e);
+          console.error(`[${interaction.user.tag}] メッセージ送信エラー:`, e);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: '申請内容の送信に失敗しました。', flags: 64 });
+          }
         }
-
-        // ログ用メッセージをチャットに送信
-        const userMention = `<@${interaction.user.id}>`;
-        const userName = interaction.member?.displayName || interaction.user.username;
-        const timeStamp = now.toLocaleString('ja-JP', {
-          timeZone: 'Asia/Tokyo',
-          hour12: false,
-        }).replace(/\//g, '-').replace(',', '');
-        const messageUrl = sentMessage?.url || '（リンクなし）';
-
-        await channel.send(
-          `経費申請しました。　${timeStamp}　${userName} (${userMention})　${messageUrl}`
-        );
-
-        // モーダル閉じる（必須）
-        await interaction.reply({ content: '✅ 経費申請を受け付けました。', flags: 64 });
       }
     }
   },
 };
+
+
