@@ -24,7 +24,7 @@ Discord上で経費申請を簡単に行うBot。案内メッセージ＋モー�
 
 4. 注意点
 ・テキストチャンネル限定コマンド
-・スレッド名は「経費申請-ユーザー名」
+・スレッド名は「経費申請-YYYY-MM-ユーザー名」
 ・エラーハンドリングあり
 
 ---
@@ -35,11 +35,17 @@ redstar hr (redstar.hoshir@gmail.com)
 
 export async function execute(interaction) {
   try {
-    await interaction.reply({ content: specText, ephemeral: true });
+    await interaction.reply({
+      content: specText,
+      flags: 64, // "ephemeral: true" の代替
+    });
   } catch (error) {
     console.error('仕様書コマンドエラー:', error);
     if (!interaction.replied) {
-      await interaction.reply({ content: 'エラーが発生しました。', ephemeral: true });
+      await interaction.reply({
+        content: 'エラーが発生しました。',
+        flags: 64,
+      });
     }
   }
 }
