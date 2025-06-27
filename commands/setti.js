@@ -16,13 +16,13 @@ export async function execute(interaction) {
   if (!channel || !(channel instanceof TextChannel)) {
     await interaction.reply({
       content: 'このコマンドはテキストチャンネルでのみ使えます。',
-      ephemeral: true,
+      flags: 64,
     });
     return;
   }
 
+  // 既存案内メッセージの削除
   try {
-    // 既存案内メッセージ削除
     const fetchedMessages = await channel.messages.fetch({ limit: 50 });
     for (const msg of fetchedMessages.values()) {
       if (
@@ -32,33 +32,29 @@ export async function execute(interaction) {
         try {
           await msg.delete();
         } catch (e) {
-          if (e.code !== 10008) {
-            console.error('既存メッセージ削除失敗:', e);
-          }
+          console.error('既存案内メッセージの削除に失敗しました:', e);
         }
       }
     }
+  } catch (err) {
+    console.error('メッセージ取得失敗:', err);
+  }
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('expense_apply_button')
-        .setLabel('経費申請する')
-        .setStyle(ButtonStyle.Primary)
-    );
+  // ボタン作成
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('expense_apply_button')
+      .setLabel('経費申請する')
+      .setStyle(ButtonStyle.Primary)
+  );
 
+  try {
     await interaction.reply({
       content: '経費申請をする場合は以下のボタンを押してください。',
       components: [row],
-      ephemeral: false,
     });
-
   } catch (err) {
-    console.error('案内メッセージ送信に失敗しました:', err);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: '案内メッセージの送信に失敗しました。',
-        ephemeral: true,
-      });
-    }
+    console.error('案内メッセージの送信またはピン留めに失敗しました:', err);
   }
 }
+
