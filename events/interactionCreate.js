@@ -40,12 +40,7 @@ export default {
           .setCustomId('expense_apply_modal')
           .setTitle('経費申請フォーム');
 
-        const displayNameInput = new TextInputBuilder()
-          .setCustomId('displayName')
-          .setLabel('あなたの名前')
-          .setStyle(TextInputStyle.Short)
-          .setValue(interaction.member?.displayName || interaction.user.username)
-          .setRequired(true);
+        // 名前欄はモーダルから削除
 
         const expenseItemInput = new TextInputBuilder()
           .setCustomId('expenseItem')
@@ -59,10 +54,16 @@ export default {
           .setStyle(TextInputStyle.Short)
           .setRequired(true);
 
+        const remarksInput = new TextInputBuilder()
+          .setCustomId('remarks')
+          .setLabel('備考 (任意)')
+          .setStyle(TextInputStyle.Paragraph) // 複数行入力可能
+          .setRequired(false);
+
         modal.addComponents(
-          new ActionRowBuilder().addComponents(displayNameInput),
           new ActionRowBuilder().addComponents(expenseItemInput),
-          new ActionRowBuilder().addComponents(amountInput)
+          new ActionRowBuilder().addComponents(amountInput),
+          new ActionRowBuilder().addComponents(remarksInput)
         );
 
         try {
@@ -82,9 +83,10 @@ export default {
       if (interaction.customId === 'expense_apply_modal') {
         if (interaction.replied || interaction.deferred) return;
 
-        const displayName = interaction.fields.getTextInputValue('displayName');
+        // displayNameはモーダルから削除したので取得しない
         const expenseItem = interaction.fields.getTextInputValue('expenseItem');
         const amount = interaction.fields.getTextInputValue('amount');
+        const remarks = interaction.fields.getTextInputValue('remarks') || '(なし)';
 
         const channel = interaction.channel;
         if (!channel) {
@@ -119,9 +121,12 @@ export default {
           return;
         }
 
+        // ユーザーIDでメンションを作成
+        const mention = `<@${interaction.user.id}>`;
+
         try {
           await thread.send(
-            `**経費申請**\n- 名前: ${displayName}\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円`
+            `**経費申請**\n- 名前: ${mention}\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${remarks}`
           );
           await interaction.reply({ content: '✅ 経費申請を送信しました。', flags: 64 });
         } catch (e) {
