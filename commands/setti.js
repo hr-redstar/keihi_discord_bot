@@ -36,9 +36,17 @@ export async function execute(interaction) {
       .setStyle(ButtonStyle.Primary),
   );
 
-  await interaction.reply({
+  const botMessage = await interaction.reply({
     content: '経費申請をする場合は以下のボタンを押してください。',
     components: [row],
     ephemeral: false,
+    fetchReply: true,  // 返信メッセージを取得するために必要
   });
+
+  // メッセージをピン留めして上に固定する
+  try {
+    await botMessage.pin();
+  } catch (error) {
+    console.error('メッセージのピン留めに失敗しました:', error);
+  }
 }
