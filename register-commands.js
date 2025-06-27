@@ -1,26 +1,28 @@
-require('dotenv').config();
-const { REST } = require('@discordjs/rest');
-const { Routes } = require('discord-api-types/v9');
-const fs = require('fs');
+import { REST, Routes, SlashCommandBuilder } from 'discord.js';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const commands = [];
-const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
-for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
-  commands.push(command.data.toJSON());
-}
+const commands = [
+  new SlashCommandBuilder()
+    .setName('setti')
+    .setDescription('経費申請の案内メッセージを送信します'),
+].map(command => command.toJSON());
 
-const rest = new REST({ version: '9' }).setToken(process.env.DISCORD_TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('Registering slash commands...');
+    console.log('Started refreshing application (/) commands.');
+
+    // guildId指定で開発用。公開はGuild削除して全体登録に変更可
     await rest.put(
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-      { body: commands }
+      { body: commands },
     );
-    console.log('Commands registered successfully.');
+
+    console.log('Successfully reloaded application (/) commands.');
   } catch (error) {
     console.error(error);
   }
 })();
+

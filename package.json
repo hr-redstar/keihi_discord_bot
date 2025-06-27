@@ -3,15 +3,17 @@
   "version": "1.0.0",
   "description": "Discord 経費申請Bot",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "register-commands": "node register-commands.js"
   },
   "engines": {
-    "node": "18.x"
+    "node": ">=18"
   },
   "dependencies": {
-    "discord.js": "^13.16.0",
+    "discord.js": "^14.21.0",
     "dotenv": "^16.3.1"
-  }
+  },
+  "author": "redstar hr <redstar.hoshir@gmail.com>"
 }

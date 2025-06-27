@@ -1,32 +1,36 @@
-require('dotenv').config();
-const { Client, Intents } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+import { Client, Collection, GatewayIntentBits, Events } from 'discord.js';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS] });
+dotenv.config();
 
-client.commands = new Map();
-const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+
+// コマンドをCollectionに読み込み
+client.commands = new Collection();
+
+const commandsPath = path.resolve('./commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
 for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
+  const filePath = path.join(commandsPath, file);
+  const command = await import(filePath);
   client.commands.set(command.data.name, command);
 }
 
-client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
-});
+// イベントの読み込み
+const eventsPath = path.resolve('./events');
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
 
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isCommand()) return;
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    await interaction.reply({ content: 'Error executing command.', ephemeral: true });
+for (const file of eventFiles) {
+  const filePath = path.join(eventsPath, file);
+  const event = await import(filePath);
+  if (event.default.once) {
+    client.once(event.default.name, (...args) => event.default.execute(...args));
+  } else {
+    client.on(event.default.name, (...args) => event.default.execute(...args));
   }
-});
+}
 
 client.login(process.env.DISCORD_TOKEN);
