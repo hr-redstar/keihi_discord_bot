@@ -21,19 +21,23 @@ export async function execute(interaction) {
     return;
   }
 
-  // 既存案内メッセージ削除
-  const fetchedMessages = await channel.messages.fetch({ limit: 50 });
-  for (const msg of fetchedMessages.values()) {
-    if (
-      msg.author.id === interaction.client.user.id &&
-      msg.content.includes('経費申請をする場合は以下のボタンを押してください。')
-    ) {
-      try {
-        await msg.delete();
-      } catch (e) {
-        console.error('既存メッセージ削除失敗:', e);
+  // 既存の案内メッセージ削除
+  try {
+    const fetchedMessages = await channel.messages.fetch({ limit: 50 });
+    for (const msg of fetchedMessages.values()) {
+      if (
+        msg.author.id === interaction.client.user.id &&
+        msg.content.includes('経費申請をする場合は以下のボタンを押してください。')
+      ) {
+        try {
+          await msg.delete();
+        } catch (e) {
+          console.error('既存メッセージ削除失敗:', e);
+        }
       }
     }
+  } catch (err) {
+    console.error('メッセージ取得失敗:', err);
   }
 
   // ボタン作成
