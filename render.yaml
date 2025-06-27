@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: discord-keihi-bot
+    runtime: node
+    repo: https://github.com/your-username/discord-keihi-bot
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm install && npm run register-commands
+    startCommand: npm start
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: GUILD_ID
+        sync: false
