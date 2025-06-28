@@ -2,10 +2,10 @@ import { SlashCommandBuilder } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('仕様書')
-  .setDescription('経費申請Botの仕様書を表示します');
+  .setDescription('経費申請BotとKPI報告機能の仕様書を表示します');
 
 const specText = `
->>> **📄 経費申請Bot 仕様書**
+>>> **📄 経費申請 仕様書**
 
 ---
 
@@ -54,6 +54,59 @@ const specText = `
 
 ---
 
+>>> **📄 KPI報告機能 仕様書**
+
+---
+
+### 🧾 概要
+KPI報告機能は、**店舗別に目標人数を設定し、ユーザーが達成人数を報告できる仕組み**です。  
+追加された店舗は管理され、報告時は選択メニューで店舗を選び、目標達成率を計算して報告します。
+
+---
+
+### ✅ 主な機能
+
+- \`/kpi_設定\` コマンドで店舗の追加と目標設定用の案内を送信
+- 店舗名はJSONファイル等で永続管理し、重複登録を防止
+- KPI店舗追加ボタンで複数店舗の追加が可能
+- KPI目標設定ボタンで店舗を選択し、日付と目標人数をモーダルで入力可能
+- \`/kpi_設置\` コマンドで報告用モーダルを開き、店舗をプルダウン選択可能
+- 達成人数を入力後、目標人数と比較し達成率を計算
+- KPI報告は指定チャンネルにログとして投稿
+- Slack連携通知（別途設定で実装）
+
+---
+
+### 🔁 操作フロー
+
+1. 管理者が \`/kpi_設定\` を実行し、店舗追加・目標設定の案内を送信
+2. ユーザーが店舗追加ボタンを押し、店舗名をモーダルで追加
+3. ユーザーが目標設定ボタンを押し、店舗選択後に目標人数・日付を設定
+4. ユーザーが \`/kpi_設置\` コマンドで報告モーダルを開く
+5. 店舗プルダウンから店舗を選択し、達成人数と日付を入力して送信
+6. Botが達成率を計算し、ログとしてDiscordチャットとSlackに送信
+
+---
+
+### 📌 補足仕様
+
+- 店舗リストはJSONファイルに永続保存
+- 店舗の追加は重複チェックあり
+- 達成率は整数または小数点2位まで計算
+- モーダルは Discord.js v14 の Modal API を使用
+- エラーハンドリングを十分に実装
+
+---
+
+### 🛠 技術補足
+
+- Discord.js v14 で開発
+- ファイルIOは fs/promises を利用
+- Slack Webhook URLは環境変数で管理
+- Render上で常時稼働
+
+---
+
 🔧 開発・運用: **redstar hr**  
 📧 お問い合わせ: redstar.hoshir@gmail.com
 `;
@@ -62,7 +115,7 @@ export async function execute(interaction) {
   try {
     await interaction.reply({
       content: specText,
-      flags: 64, // Ephemeral (非公開)
+      flags: 64, // Ephemeral (非公開返信)
     });
   } catch (error) {
     console.error('仕様書コマンドエラー:', error);
@@ -74,5 +127,3 @@ export async function execute(interaction) {
     }
   }
 }
-
-
