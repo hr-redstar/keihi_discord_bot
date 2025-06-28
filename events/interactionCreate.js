@@ -7,7 +7,10 @@ import {
   ThreadAutoArchiveDuration,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
 } from 'discord.js';
+
+import { readShopList, addShop } from '../utils/kpiFileUtil.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -18,7 +21,6 @@ export default {
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
-
       try {
         await command.execute(interaction);
       } catch (error) {
@@ -41,8 +43,6 @@ export default {
         const modal = new ModalBuilder()
           .setCustomId('expense_apply_modal')
           .setTitle('経費申請フォーム');
-
-        // 名前はモーダルに表示しない（非表示）
 
         const expenseItemInput = new TextInputBuilder()
           .setCustomId('expenseItem')
@@ -76,7 +76,68 @@ export default {
             await interaction.reply({ content: 'モーダルの表示に失敗しました。', flags: 64 });
           }
         }
+        return;
       }
+
+      // KPI 店舗追加ボタン
+      if (interaction.customId === 'kpi_add_shop_button') {
+        if (interaction.replied || interaction.deferred) return;
+
+        const modal = new ModalBuilder()
+          .setCustomId('kpi_add_shop_modal')
+          .setTitle('KPI 店舗名の追加');
+
+        const shopNameInput = new TextInputBuilder()
+          .setCustomId('shopName')
+          .setLabel('追加する店舗名')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(shopNameInput));
+
+        try {
+          await interaction.showModal(modal);
+        } catch (error) {
+          console.error(`KPI 店舗追加モーダル表示エラー [${interaction.user.tag}]:`, error);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'モーダルの表示に失敗しました。', flags: 64 });
+          }
+        }
+        return;
+      }
+
+      // KPI 目標設定ボタン
+      if (interaction.customId === 'kpi_set_target_button') {
+        if (interaction.replied || interaction.deferred) return;
+
+        const shops = await readShopList();
+        if (shops.length === 0) {
+          await interaction.reply({ content: '店舗が登録されていません。まず店舗を追加してください。', flags: 64 });
+          return;
+        }
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('kpi_shop_select')
+          .setPlaceholder('店舗を選択してください（複数選択可）')
+          .setMinValues(1)
+          .setMaxValues(shops.length)
+          .addOptions(
+            shops.map(shop => ({
+              label: shop,
+              value: shop,
+            }))
+          );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+          content: '目標設定のために店舗を選択してください。',
+          components: [row],
+          flags: 64,
+        });
+        return;
+      }
+
       return;
     }
 
@@ -91,14 +152,10 @@ export default {
 
         const channel = interaction.channel;
         if (!channel) {
-          await interaction.reply({
-            content: 'この操作はテキストチャンネルでのみ可能です。',
-            flags: 64,
-          });
+          await interaction.reply({ content: 'この操作はテキストチャンネルでのみ可能です。', flags: 64 });
           return;
         }
 
-        // 日付フォーマット（日本時間）
         const now = new Date();
         const yearMonth = now.toISOString().slice(0, 7);
         const formattedDate = now.toLocaleString('ja-JP', {
@@ -136,12 +193,11 @@ export default {
             `**経費申請**\n- 名前: <@${interaction.user.id}>\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${notes}`
           );
 
-          // テキストチャンネルにログ送信（年月日時刻、名前＋メンション、スレッドメッセージリンク）
           await channel.send(
             `経費申請しました。　${formattedDate}　${interaction.member?.displayName || interaction.user.username} (<@${interaction.user.id}>)　${threadMessage.url}`
           );
 
-          // 既存案内メッセージ削除（過去50件から検索）
+          // 既存案内メッセージ削除（過去50件）
           try {
             const fetchedMessages = await channel.messages.fetch({ limit: 50 });
             for (const msg of fetchedMessages.values()) {
@@ -173,17 +229,43 @@ export default {
             components: [row],
           });
 
-          // モーダルは自動で閉じるのでここで返信は不要
-
         } catch (e) {
           console.error(`[${interaction.user.tag}] メッセージ送信エラー:`, e);
           if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: '申請内容の送信に失敗しました。', flags: 64 });
           }
         }
+        return;
+      }
+
+      if (interaction.customId === 'kpi_add_shop_modal') {
+        if (interaction.replied || interaction.deferred) return;
+
+        const shopName = interaction.fields.getTextInputValue('shopName');
+        const added = await addShop(shopName);
+
+        if (!added) {
+          await interaction.reply({ content: 'その店舗名は既に登録されています。', flags: 64 });
+          return;
+        }
+        await interaction.reply({ content: `店舗名「${shopName}」を追加しました。`, flags: 64 });
+        return;
+      }
+    }
+
+    // セレクトメニュー選択時
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === 'kpi_shop_select') {
+        const selectedShops = interaction.values; // 選択された店舗名配列
+
+        // ここに日付・目標人数のモーダル表示処理を追加するなど対応可能（割愛）
+
+        await interaction.reply({
+          content: `選択した店舗: ${selectedShops.join(', ')}\n(目標設定処理は別途実装してください)`,
+          flags: 64,
+        });
+        return;
       }
     }
   },
 };
-
-
