@@ -110,6 +110,10 @@ export default {
         if (interaction.replied || interaction.deferred) return;
 
         const shops = await readShopList();
+
+        // ここでログ追加
+        console.log(`[${interaction.user.tag}] 店舗リスト読み込み結果:`, shops);
+
         if (shops.length === 0) {
           await interaction.reply({ content: '店舗が登録されていません。まず店舗を追加してください。', flags: 64 });
           return;
@@ -280,4 +284,3 @@ export default {
     }
   },
 };
-
