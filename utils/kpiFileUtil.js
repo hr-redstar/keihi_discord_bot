@@ -3,6 +3,7 @@ import path from 'path';
 
 const dataDir = path.resolve('./data');
 const shopsFilePath = path.join(dataDir, 'kpi_shops.json');
+const targetFilePath = path.join(dataDir, 'kpi_ninzuu.json');
 
 export async function readShopList() {
   try {
@@ -30,3 +31,43 @@ export async function addShop(shopName) {
     return false;
   }
 }
+
+export async function readTargets() {
+  try {
+    await fs.mkdir(dataDir, { recursive: true });
+    const data = await fs.readFile(targetFilePath, 'utf-8');
+    return JSON.parse(data);
+  } catch (e) {
+    if (e.code === 'ENOENT') return {};
+    console.error('KPI目標読み込みエラー:', e);
+    return {};
+  }
+}
+
+export async function saveTargets(targets) {
+  try {
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(targetFilePath, JSON.stringify(targets, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    console.error('KPI目標書き込みエラー:', e);
+    return false;
+  }
+}
+
+export async function addTargets(shops, date, targetCount, setBy) {
+  const targets = await readTargets();
+
+  for (const shop of shops) {
+    if (!targets[shop]) targets[shop] = [];
+    targets[shop].push({
+      date,
+      target: targetCount,
+      setBy,
+      setAt: new Date().toISOString(),
+    });
+  }
+
+  return await saveTargets(targets);
+}
+
