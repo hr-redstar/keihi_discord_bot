@@ -10,7 +10,8 @@ import {
   StringSelectMenuBuilder,
 } from 'discord.js';
 
-import { readShopList, addShop } from '../utils/kpiFileUtil.js';
+import { readShopList, addShop, addTargets } from '../utils/kpiFileUtil.js';
+import { handleKpiSettingModal } from '../commands/kpi_setting.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -65,7 +66,7 @@ export default {
         modal.addComponents(
           new ActionRowBuilder().addComponents(expenseItemInput),
           new ActionRowBuilder().addComponents(amountInput),
-          new ActionRowBuilder().addComponents(notesInput)
+          new ActionRowBuilder().addComponents(notesInput),
         );
 
         try {
@@ -79,7 +80,6 @@ export default {
         return;
       }
 
-      // KPI 店舗追加ボタン
       if (interaction.customId === 'kpi_add_shop_button') {
         if (interaction.replied || interaction.deferred) return;
 
@@ -89,7 +89,7 @@ export default {
 
         const shopNameInput = new TextInputBuilder()
           .setCustomId('shopName')
-          .setLabel('追加する店舗名（カンマ区切りで複数可）')
+          .setLabel('追加する店舗名')
           .setStyle(TextInputStyle.Short)
           .setRequired(true);
 
@@ -106,7 +106,6 @@ export default {
         return;
       }
 
-      // KPI 目標設定ボタン
       if (interaction.customId === 'kpi_set_target_button') {
         if (interaction.replied || interaction.deferred) return;
 
@@ -125,7 +124,7 @@ export default {
             shops.map(shop => ({
               label: shop,
               value: shop,
-            }))
+            })),
           );
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -143,7 +142,7 @@ export default {
 
     // モーダル送信時
     if (interaction.isModalSubmit()) {
-      // 経費申請モーダル
+      // 経費申請フォーム送信
       if (interaction.customId === 'expense_apply_modal') {
         if (interaction.replied || interaction.deferred) return;
 
@@ -191,11 +190,11 @@ export default {
 
         try {
           const threadMessage = await thread.send(
-            `**経費申請**\n- 名前: <@${interaction.user.id}>\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${notes}`
+            `**経費申請**\n- 名前: <@${interaction.user.id}>\n- 経費項目: ${expenseItem}\n- 金額: ${amount} 円\n- 備考: ${notes}`,
           );
 
           await channel.send(
-            `経費申請しました。　${formattedDate}　${interaction.member?.displayName || interaction.user.username} (<@${interaction.user.id}>)　${threadMessage.url}`
+            `経費申請しました。　${formattedDate}　${interaction.member?.displayName || interaction.user.username} (<@${interaction.user.id}>)　${threadMessage.url}`,
           );
 
           // 既存案内メッセージ削除（過去50件）
@@ -222,14 +221,13 @@ export default {
             new ButtonBuilder()
               .setCustomId('expense_apply_button')
               .setLabel('経費申請をする場合は以下のボタンを押してください。')
-              .setStyle(ButtonStyle.Primary)
+              .setStyle(ButtonStyle.Primary),
           );
 
           await channel.send({
             content: '経費申請をする場合は以下のボタンを押してください。',
             components: [row],
           });
-
         } catch (e) {
           console.error(`[${interaction.user.tag}] メッセージ送信エラー:`, e);
           if (!interaction.replied && !interaction.deferred) {
@@ -239,89 +237,26 @@ export default {
         return;
       }
 
-      // KPI 店舗追加モーダル（複数カンマ区切り対応）
+      // KPI 店舗追加モーダル送信
       if (interaction.customId === 'kpi_add_shop_modal') {
         if (interaction.replied || interaction.deferred) return;
 
-        const shopNamesRaw = interaction.fields.getTextInputValue('shopName');
-        const shopNames = shopNamesRaw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        const shopName = interaction.fields.getTextInputValue('shopName');
+        const added = await addShop(shopName);
 
-        if (shopNames.length === 0) {
-          await interaction.reply({ content: '店舗名を入力してください。', flags: 64 });
+        if (!added) {
+          await interaction.reply({ content: 'その店舗名は既に登録されています。', flags: 64 });
           return;
         }
-
-        const results = [];
-        for (const name of shopNames) {
-          const added = await addShop(name);
-          results.push({ name, added });
-        }
-
-        const addedShops = results.filter(r => r.added).map(r => r.name);
-        const skippedShops = results.filter(r => !r.added).map(r => r.name);
-
-        let replyMsg = '';
-        if (addedShops.length > 0) {
-          replyMsg += `以下の店舗を追加しました:\n${addedShops.join('\n')}\n`;
-        }
-        if (skippedShops.length > 0) {
-          replyMsg += `既に登録されている店舗:\n${skippedShops.join('\n')}`;
-        }
-
-        await interaction.reply({ content: replyMsg, flags: 64 });
+        await interaction.reply({ content: `店舗名「${shopName}」を追加しました。`, flags: 64 });
         return;
       }
 
-      // KPI 目標設定モーダル送信処理（customIdに店舗名含む）
-      if (interaction.customId.startsWith('kpi_set_target_modal_')) {
-        if (interaction.replied || interaction.deferred) return;
-
-        const targetDate = interaction.fields.getTextInputValue('targetDate') || '(未指定)';
-        const targetCountRaw = interaction.fields.getTextInputValue('targetCount');
-        const targetCount = targetCountRaw ? targetCountRaw.trim() : '(未指定)';
-
-        // customIdから店舗情報を取得
-        const shopsPart = interaction.customId.substring('kpi_set_target_modal_'.length);
-        const shops = shopsPart.split(',');
-
-        // KPI目標の永続化処理
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const dataDir = path.resolve('./data');
-        const targetFilePath = path.join(dataDir, 'kpi_targets.json');
-
-        let targets = {};
-        try {
-          await fs.mkdir(dataDir, { recursive: true });
-          const targetData = await fs.readFile(targetFilePath, 'utf-8');
-          targets = JSON.parse(targetData);
-        } catch {
-          targets = {};
-        }
-
-        for (const shop of shops) {
-          if (!targets[shop]) targets[shop] = [];
-          targets[shop].push({
-            date: targetDate,
-            target: targetCount,
-            setBy: interaction.user.tag,
-            setAt: new Date().toISOString(),
-          });
-        }
-
-        try {
-          await fs.writeFile(targetFilePath, JSON.stringify(targets, null, 2), 'utf-8');
-        } catch (e) {
-          console.error('KPI目標保存エラー:', e);
-          await interaction.reply({ content: 'KPI目標の保存に失敗しました。', flags: 64 });
-          return;
-        }
-
-        await interaction.reply({
-          content: `KPI目標を設定しました。\n店舗: ${shops.join(', ')}\n対象日: ${targetDate}\n目標人数: ${targetCount}`,
-          flags: 64,
-        });
-        return;
+      // KPI 目標設定モーダル送信
+      if (interaction.customId === 'kpi_setting_modal') {
+        // kpi_setting.jsの処理に委譲
+        const handled = await handleKpiSettingModal(interaction);
+        if (handled) return;
       }
     }
 
@@ -330,37 +265,17 @@ export default {
       if (interaction.customId === 'kpi_shop_select') {
         const selectedShops = interaction.values;
 
-        // 日付・目標人数入力モーダルを表示(customIdに選択店舗をカンマ区切りで含める)
-        const modal = new ModalBuilder()
-          .setCustomId(`kpi_set_target_modal_${selectedShops.join(',')}`)
-          .setTitle('KPI 目標設定');
+        // KPI目標設定モーダル表示（店舗選択は kpi_setting_modal のテキスト欄での設定に変更したため、
+        // ここでは店舗名を連結して customId 付与する方式にしてもOKですが、
+        // 今回は簡略化のため kpi_setting_modal とは別の実装にできます）
 
-        const targetDateInput = new TextInputBuilder()
-          .setCustomId('targetDate')
-          .setLabel('対象日（任意）例: 2025-07-01')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false);
+        // 今回は簡単に選択店舗をモーダルのhiddenフィールドや別管理せず、手動で入力にしています。
 
-        const targetCountInput = new TextInputBuilder()
-          .setCustomId('targetCount')
-          .setLabel('目標人数（任意）例: 20')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(targetDateInput),
-          new ActionRowBuilder().addComponents(targetCountInput),
-        );
-
-        try {
-          await interaction.showModal(modal);
-        } catch (error) {
-          console.error('KPI 目標設定モーダル表示エラー:', error);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'モーダルの表示に失敗しました。', flags: 64 });
-          }
-        }
-        return;
+        // 以下は単に店舗選択完了メッセージ送信例です
+        await interaction.reply({
+          content: `選択された店舗: ${selectedShops.join(', ')}`,
+          ephemeral: true,
+        });
       }
     }
   },
