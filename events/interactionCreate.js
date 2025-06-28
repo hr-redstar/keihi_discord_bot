@@ -251,6 +251,22 @@ export default {
         await interaction.reply({ content: `店舗名「${shopName}」を追加しました。`, flags: 64 });
         return;
       }
+
+      // KPI 目標設定モーダルの送信処理追加
+      if (interaction.customId.startsWith('kpi_set_target_modal_')) {
+        if (interaction.replied || interaction.deferred) return;
+
+        const targetDate = interaction.fields.getTextInputValue('targetDate') || '(未入力)';
+        const targetNumber = interaction.fields.getTextInputValue('targetNumber') || '(未入力)';
+
+        // 必要ならここで選択店舗も保持して処理可能
+
+        await interaction.reply({
+          content: `目標設定を受け付けました。\n対象日: ${targetDate}\n目標人数: ${targetNumber}`,
+          flags: 64,
+        });
+        return;
+      }
     }
 
     // セレクトメニュー選択時
@@ -258,14 +274,39 @@ export default {
       if (interaction.customId === 'kpi_shop_select') {
         const selectedShops = interaction.values; // 選択された店舗名配列
 
-        // ここに日付・目標人数のモーダル表示処理を追加するなど対応可能（割愛）
+        // 対象日と目標人数を任意入力できるモーダルを表示
+        const modal = new ModalBuilder()
+          .setCustomId(`kpi_set_target_modal_${interaction.id}`) // ユニークID付与
+          .setTitle('KPI 目標設定');
 
-        await interaction.reply({
-          content: `選択した店舗: ${selectedShops.join(', ')}\n(目標設定処理は別途実装してください)`,
-          flags: 64,
-        });
+        const targetDateInput = new TextInputBuilder()
+          .setCustomId('targetDate')
+          .setLabel('対象日 (例: 2025-07-01) ※任意')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false); // 任意入力
+
+        const targetNumberInput = new TextInputBuilder()
+          .setCustomId('targetNumber')
+          .setLabel('目標人数 ※任意')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false); // 任意入力
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(targetDateInput),
+          new ActionRowBuilder().addComponents(targetNumberInput)
+        );
+
+        try {
+          await interaction.showModal(modal);
+        } catch (error) {
+          console.error('KPI 目標設定モーダル表示エラー:', error);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'モーダルの表示に失敗しました。', flags: 64 });
+          }
+        }
         return;
       }
     }
   },
 };
+
